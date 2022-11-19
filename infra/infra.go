@@ -26,13 +26,13 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 	})
 
 	queueConsumerLambda := awslambda.NewFunction(stack, jsii.String("QueueConsumerFunction"), &awslambda.FunctionProps{
-		Runtime:         awslambda.Runtime_GO_1_X(),
+		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
 		MemorySize:      jsii.Number(128),
 		Timeout:         awscdk.Duration_Seconds(jsii.Number(15)),
 		Handler:         jsii.String("queue-consumer"),
-		Architecture:    awslambda.Architecture_X86_64(),
+		Architecture:    awslambda.Architecture_ARM_64(),
 		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "queue-consumer", "build")), nil),
-		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_143_0(),
+		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
 	})
 
 	queueConsumerLambda.AddEventSource(awslambdaeventsources.NewSqsEventSource(queue, &awslambdaeventsources.SqsEventSourceProps{
@@ -41,13 +41,13 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 	}))
 
 	queueProducerLambda := awslambda.NewFunction(stack, jsii.String("QueueProducerFunction"), &awslambda.FunctionProps{
-		Runtime:         awslambda.Runtime_GO_1_X(),
+		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
 		MemorySize:      jsii.Number(4096),
 		Timeout:         awscdk.Duration_Seconds(jsii.Number(30)),
 		Handler:         jsii.String("queue-producer"),
-		Architecture:    awslambda.Architecture_X86_64(),
+		Architecture:    awslambda.Architecture_ARM_64(),
 		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "queue-producer", "build")), nil),
-		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_143_0(),
+		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
 		Environment: &map[string]*string{
 			"QUEUE_URL":          queue.QueueUrl(),
 			"NUMBER_OF_MESSAGES": jsii.String("1000"),

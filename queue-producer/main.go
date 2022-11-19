@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -68,7 +67,7 @@ func worker(id int, testRunId string, batchNumbers <-chan int, results chan<- bo
 	results <- true
 }
 
-func handler(ctx context.Context) error {
+func handler() error {
 	testRunId := uuid.NewString()
 	numberOfBatches := numberOfMessages / 10
 	batchNumbers := make(chan int, numberOfBatches)

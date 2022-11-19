@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -9,7 +8,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
+func handler(sqsEvent events.SQSEvent) error {
 	for _, message := range sqsEvent.Records {
 		testRunId := *message.MessageAttributes["TestRunId"].StringValue
 		timeSentString := *message.MessageAttributes["TimeSent"].StringValue

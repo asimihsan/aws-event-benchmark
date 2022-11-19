@@ -4,10 +4,10 @@ build-infra:
 	cd $(makeFileDir)/infra && go build
 
 build-queue-consumer:
-	cd $(makeFileDir)/queue-consumer && GOOS=linux GOARCH=amd64 go build -o build/queue-consumer
+	cd $(makeFileDir)/queue-consumer && GOOS=linux GOARCH=arm64 go build -o build/bootstrap -tags lambda.norpc
 
 build-queue-producer:
-	cd $(makeFileDir)/queue-producer && GOOS=linux GOARCH=amd64 go build -o build/queue-producer
+	cd $(makeFileDir)/queue-producer && GOOS=linux GOARCH=arm64 go build -o build/bootstrap -tags lambda.norpc
 
 cdk-ls: build-infra
 	cd $(makeFileDir)/infra && cdk ls
