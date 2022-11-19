@@ -84,6 +84,7 @@ func handler() error {
 	for i := 0; i < numWorkers; i++ {
 		<-results
 	}
+	fmt.Printf("testRunId %s done\n", testRunId)
 	return nil
 }
 

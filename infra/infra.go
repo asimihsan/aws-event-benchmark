@@ -55,6 +55,23 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 	})
 	queue.GrantSendMessages(queueProducerLambda.Role())
 
+	analyzeTestRunLambda := awslambda.NewFunction(stack, jsii.String("AnalyzeTestRunFunction"), &awslambda.FunctionProps{
+		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
+		MemorySize:      jsii.Number(128),
+		Timeout:         awscdk.Duration_Seconds(jsii.Number(15)),
+		Handler:         jsii.String("queue-consumer"),
+		Architecture:    awslambda.Architecture_ARM_64(),
+		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "analyze-test-run", "build")), nil),
+		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
+		Environment: &map[string]*string{
+			"REGION":                    stack.Region(),
+			"CLOUDWATCH_LOGS_LOG_GROUP": queueConsumerLambda.LogGroup().LogGroupName(),
+		},
+	})
+	queueConsumerLambda.LogGroup().Grant(analyzeTestRunLambda.Role(),
+		jsii.String("logs:FilterLogEvents"),
+	)
+
 	return stack
 }
 
