@@ -36,7 +36,7 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 	})
 
 	queueConsumerLambda.AddEventSource(awslambdaeventsources.NewSqsEventSource(queue, &awslambdaeventsources.SqsEventSourceProps{
-		BatchSize: jsii.Number(1),
+		BatchSize: jsii.Number(10),
 		Enabled:   jsii.Bool(true),
 	}))
 
