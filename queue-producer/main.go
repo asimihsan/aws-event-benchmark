@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/google/uuid"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -17,14 +18,15 @@ import (
 var (
 	queueUrl         string
 	numberOfMessages int
+	sess             *session.Session
 	sqsClient        *sqs.SQS
 )
 
-func handler(ctx context.Context) error {
-	testRunId := uuid.NewString()
-	fmt.Printf("testRunId %s, numberOfMessages %d\n", testRunId, numberOfMessages)
-	for i := 0; i <= numberOfMessages/10; i++ {
-		fmt.Printf("starting batch %d...\n", i)
+func worker(id int, testRunId string, batchNumbers <-chan int, results chan<- bool) {
+	sqsClient = sqs.New(sess)
+	fmt.Printf("worker id %d start\n", id)
+	for batchNumber := range batchNumbers {
+		fmt.Printf("worker id %d starting batch %d...\n", id, batchNumber)
 		entries := make([]*sqs.SendMessageBatchRequestEntry, 10)
 		for j := 0; j < 10; j++ {
 			entry := sqs.SendMessageBatchRequestEntry{
@@ -39,7 +41,7 @@ func handler(ctx context.Context) error {
 						StringValue: aws.String(time.Now().Format(time.RFC3339Nano)),
 					},
 				},
-				MessageBody: aws.String(fmt.Sprintf("foobar %010d", i*10+j)),
+				MessageBody: aws.String(fmt.Sprintf("foobar %010d", batchNumber*10+j)),
 			}
 			entries[j] = &entry
 		}
@@ -47,7 +49,7 @@ func handler(ctx context.Context) error {
 			QueueUrl: aws.String(queueUrl),
 			Entries:  entries,
 		}
-		fmt.Printf("sending batch %d...\n", i)
+		fmt.Printf("worker id %d sending batch %d...\n", id, batchNumber)
 		resp, err := sqsClient.SendMessageBatch(&input)
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); ok {
@@ -55,11 +57,33 @@ func handler(ctx context.Context) error {
 			}
 		}
 		if len(resp.Failed) > 0 {
-			fmt.Printf("some messages failed to send!!\n")
+			fmt.Printf("worker id %d some messages failed to send!!\n", id)
 			for _, message := range resp.Failed {
 				fmt.Printf("**failed id: %s, code: %s, message: %s, sender fault: %+v\n", message.Id, message.Code, message.Message, message.SenderFault)
 			}
 		}
+	}
+
+	fmt.Printf("worker %d done", id)
+	results <- true
+}
+
+func handler(ctx context.Context) error {
+	testRunId := uuid.NewString()
+	numberOfBatches := numberOfMessages / 10
+	batchNumbers := make(chan int, numberOfBatches)
+	results := make(chan bool, numberOfBatches)
+	numWorkers := runtime.NumCPU()
+	for w := 1; w <= numWorkers; w++ {
+		go worker(w, testRunId, batchNumbers, results)
+	}
+	for i := 0; i <= numberOfMessages/10; i++ {
+		batchNumbers <- i
+	}
+	close(batchNumbers)
+
+	for i := 0; i < numWorkers; i++ {
+		<-results
 	}
 	return nil
 }
@@ -73,10 +97,9 @@ func main() {
 		panic(err)
 	}
 
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
+	sess = session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	sqsClient = sqs.New(sess)
 
 	lambda.Start(handler)
 }
