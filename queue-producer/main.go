@@ -63,7 +63,7 @@ func worker(id int, testRunId string, batchNumbers <-chan int, results chan<- bo
 		}
 	}
 
-	fmt.Printf("worker %d done", id)
+	fmt.Printf("worker %d done\n", id)
 	results <- true
 }
 

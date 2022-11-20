@@ -1,19 +1,18 @@
-module analyze-test-run
+module stream-producer
 
 go 1.19
 
 require (
 	github.com/aws/aws-lambda-go v1.35.0
+	github.com/aws/aws-sdk-go v1.44.142
 	github.com/aws/aws-sdk-go-v2 v1.17.1
 	github.com/aws/aws-sdk-go-v2/config v1.18.2
-	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.24.0
-	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.16.3
-	github.com/caio/go-tdigest/v4 v4.0.1
-	go.uber.org/ratelimit v0.2.0
+	github.com/aws/aws-sdk-go-v2/service/kinesis v1.15.23
+	github.com/google/uuid v1.3.0
 )
 
 require (
-	github.com/andres-erbsen/clock v0.0.0-20160526145045-9e14626cd129 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.9 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.2 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.25 // indirect

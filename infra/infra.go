@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awskinesis"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdaeventsources"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
@@ -36,36 +37,78 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 	})
 
 	queueConsumerLambda.AddEventSource(awslambdaeventsources.NewSqsEventSource(queue, &awslambdaeventsources.SqsEventSourceProps{
-		BatchSize: jsii.Number(10),
+		BatchSize: jsii.Number(1),
 		Enabled:   jsii.Bool(true),
 	}))
 
 	queueProducerLambda := awslambda.NewFunction(stack, jsii.String("QueueProducerFunction"), &awslambda.FunctionProps{
 		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
 		MemorySize:      jsii.Number(4096),
-		Timeout:         awscdk.Duration_Seconds(jsii.Number(30)),
+		Timeout:         awscdk.Duration_Minutes(jsii.Number(5)),
 		Handler:         jsii.String("queue-producer"),
 		Architecture:    awslambda.Architecture_ARM_64(),
 		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "queue-producer", "build")), nil),
 		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
 		Environment: &map[string]*string{
 			"QUEUE_URL":          queue.QueueUrl(),
-			"NUMBER_OF_MESSAGES": jsii.String("1000"),
+			"NUMBER_OF_MESSAGES": jsii.String("10000"),
 		},
 	})
 	queue.GrantSendMessages(queueProducerLambda.Role())
 
-	analyzeTestRunLambda := awslambda.NewFunction(stack, jsii.String("AnalyzeTestRunFunction"), &awslambda.FunctionProps{
+	stream := awskinesis.NewStream(stack, jsii.String("Stream"), &awskinesis.StreamProps{
+		RetentionPeriod: awscdk.Duration_Days(jsii.Number(1)),
+		StreamMode:      awskinesis.StreamMode_PROVISIONED,
+		ShardCount:      jsii.Number(10),
+		StreamName:      jsii.String("EventBenchmarkStream"),
+	})
+
+	streamConsumerLambda := awslambda.NewFunction(stack, jsii.String("StreamConsumerFunction"), &awslambda.FunctionProps{
 		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
 		MemorySize:      jsii.Number(128),
 		Timeout:         awscdk.Duration_Seconds(jsii.Number(15)),
 		Handler:         jsii.String("queue-consumer"),
 		Architecture:    awslambda.Architecture_ARM_64(),
+		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "stream-consumer", "build")), nil),
+		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
+	})
+
+	streamProducerLambda := awslambda.NewFunction(stack, jsii.String("StreamProducerFunction"), &awslambda.FunctionProps{
+		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
+		MemorySize:      jsii.Number(4096),
+		Timeout:         awscdk.Duration_Minutes(jsii.Number(5)),
+		Handler:         jsii.String("queue-producer"),
+		Architecture:    awslambda.Architecture_ARM_64(),
+		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "stream-producer", "build")), nil),
+		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
+		Environment: &map[string]*string{
+			"REGION":             stack.Region(),
+			"STREAM_NAME":        stream.StreamName(),
+			"NUMBER_OF_MESSAGES": jsii.String("1000"),
+		},
+	})
+	stream.GrantReadWrite(streamProducerLambda.Role())
+
+	streamConsumerLambda.AddEventSource(awslambdaeventsources.NewKinesisEventSource(stream, &awslambdaeventsources.KinesisEventSourceProps{
+		BatchSize:             jsii.Number(1),
+		StartingPosition:      awslambda.StartingPosition_TRIM_HORIZON,
+		Enabled:               jsii.Bool(true),
+		ParallelizationFactor: jsii.Number(10),
+	}))
+	stream.GrantRead(streamConsumerLambda.Role())
+
+	analyzeTestRunLambda := awslambda.NewFunction(stack, jsii.String("AnalyzeTestRunFunction"), &awslambda.FunctionProps{
+		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
+		MemorySize:      jsii.Number(128),
+		Timeout:         awscdk.Duration_Minutes(jsii.Number(1)),
+		Handler:         jsii.String("queue-consumer"),
+		Architecture:    awslambda.Architecture_ARM_64(),
 		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "analyze-test-run", "build")), nil),
 		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
 		Environment: &map[string]*string{
-			"REGION":                    stack.Region(),
-			"CLOUDWATCH_LOGS_LOG_GROUP": queueConsumerLambda.LogGroup().LogGroupName(),
+			"REGION":                           stack.Region(),
+			"QUEUE_CLOUDWATCH_LOGS_LOG_GROUP":  queueConsumerLambda.LogGroup().LogGroupName(),
+			"STREAM_CLOUDWATCH_LOGS_LOG_GROUP": streamConsumerLambda.LogGroup().LogGroupName(),
 		},
 	})
 	queueConsumerLambda.LogGroup().Grant(analyzeTestRunLambda.Role(),

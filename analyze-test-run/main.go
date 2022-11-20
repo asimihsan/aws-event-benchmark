@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/caio/go-tdigest/v4"
 	"go.uber.org/ratelimit"
 	"os"
 	"strconv"
@@ -23,9 +24,9 @@ var (
 )
 
 func handler() error {
-	aggregation := make(map[string][]int)
+	aggregation := make(map[string]*tdigest.TDigest)
 	now := time.Now()
-	timeWindow, err := time.ParseDuration("24h")
+	timeWindow, err := time.ParseDuration("6h")
 	if err != nil {
 		return err
 	}
@@ -48,19 +49,25 @@ func handler() error {
 		for _, event := range page.Events {
 			elems := strings.Split(*event.Message, " ")
 			testRunId := elems[1]
-			timeDiff, _ := strconv.Atoi(elems[len(elems)-1])
-			if _, ok := aggregation[testRunId]; !ok {
-				aggregation[testRunId] = make([]int, 0)
+			timeDiffString := strings.TrimSpace(elems[len(elems)-1])
+			timeDiff, err := strconv.ParseFloat(timeDiffString, 64)
+			if err != nil {
+				panic(err)
 			}
-			measurements, _ := aggregation[testRunId]
-			measurementsNew := append(measurements, timeDiff)
-			aggregation[testRunId] = measurementsNew
+			if _, ok := aggregation[testRunId]; !ok {
+				t, _ := tdigest.New(tdigest.Compression(10000))
+				aggregation[testRunId] = t
+			}
+			_ = aggregation[testRunId].Add(timeDiff)
 		}
 	}
-	for k, vs := range aggregation {
-		for _, v := range vs {
-			fmt.Printf("%s,%d\n", k, v)
-		}
+	for k, digest := range aggregation {
+		fmt.Printf("timeRunId %s, count = %d\n", k, digest.Count())
+		fmt.Printf("timeRunId %s, p0 = %.3f\n", k, digest.Quantile(0.0))
+		fmt.Printf("timeRunId %s, p50 = %.3f\n", k, digest.Quantile(0.5))
+		fmt.Printf("timeRunId %s, p90 = %.3f\n", k, digest.Quantile(0.9))
+		fmt.Printf("timeRunId %s, p99 = %.3f\n", k, digest.Quantile(0.99))
+		fmt.Printf("timeRunId %s, p100 = %.3f\n", k, digest.Quantile(1.0))
 	}
 
 	return nil
@@ -75,7 +82,6 @@ func main() {
 		config.WithDefaultsMode(aws.DefaultsModeInRegion),
 		config.WithRetryMode(aws.RetryModeAdaptive),
 		config.WithRetryMaxAttempts(3),
-		//config.WithClientLogMode(aws.LogRetries|aws.LogRequest),
 	)
 	if err != nil {
 		panic(err)
