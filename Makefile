@@ -1,5 +1,9 @@
 makeFileDir := $(abspath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
+init:
+	brew install bazelisk
+	go install github.com/bazelbuild/buildtools/buildifier@latest
+
 build-infra:
 	cd $(makeFileDir)/infra && go build
 
@@ -25,11 +29,7 @@ cdk-synth: build-infra
 	cd $(makeFileDir)/infra && cdk synth
 
 cdk-deploy: build-infra build-queue-consumer build-queue-producer build-stream-consumer build-stream-producer build-analyze-test-run
-	cd $(makeFileDir)/infra && \
-		aws-vault exec kittencat-admin --region us-west-2 -- \
-			cdk deploy
+	cd $(makeFileDir)/infra && cdk deploy
 
 cdk-destroy: build-infra
-	cd $(makeFileDir)/infra && \
-		aws-vault exec kittencat-admin --region us-west-2 -- \
-			cdk destroy
+	cd $(makeFileDir)/infra && cdk destroy

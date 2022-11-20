@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,19 +12,25 @@ import (
 	"github.com/caio/go-tdigest/v4"
 	"go.uber.org/ratelimit"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 )
 
 var (
 	region               string
-	logGroupName         string
+	queueLogGroupName    string
+	streamLogGroupName   string
 	cloudwatchlogsClient *cloudwatchlogs.Client
 	cloudformationClient *cloudformation.Client
 )
 
-func handler() error {
+type Output struct {
+	TestRunId  string `json:"test_run_id"`
+	EventId    string `json:"event_id"`
+	Body       string `json:"body"`
+	TimeDiffNs int    `json:"time_diff_ns"`
+}
+
+func analyze(logGroupName string) error {
 	aggregation := make(map[string]*tdigest.TDigest)
 	now := time.Now()
 	timeWindow, err := time.ParseDuration("6h")
@@ -32,9 +39,9 @@ func handler() error {
 	}
 	startTime := now.Add(-timeWindow).UnixMilli()
 	paginator := cloudwatchlogs.NewFilterLogEventsPaginator(cloudwatchlogsClient, &cloudwatchlogs.FilterLogEventsInput{
-		LogGroupName:  aws.String(logGroupName),
-		StartTime:     aws.Int64(startTime),
-		FilterPattern: aws.String("testRunId"),
+		LogGroupName: aws.String(logGroupName),
+		StartTime:    aws.Int64(startTime),
+		//FilterPattern: aws.String("time_diff_ns"),
 	})
 
 	// FilterLogEvents is throttled to 10 TPS outside of us-east-1
@@ -47,18 +54,21 @@ func handler() error {
 			return fmt.Errorf("failed to get FilterLogEvents page, %w", err)
 		}
 		for _, event := range page.Events {
-			elems := strings.Split(*event.Message, " ")
-			testRunId := elems[1]
-			timeDiffString := strings.TrimSpace(elems[len(elems)-1])
-			timeDiff, err := strconv.ParseFloat(timeDiffString, 64)
+			fmt.Printf("tick\n")
+			var output Output
+			err := json.Unmarshal([]byte(*event.Message), &output)
 			if err != nil {
-				panic(err)
+				//fmt.Printf("could not deserialize event %s: %+v", *event.Message, err)
+				continue
 			}
+			fmt.Printf("output: %+v\n", output)
+			testRunId := output.TestRunId
+			timeDiff := time.Nanosecond * time.Duration(output.TimeDiffNs)
 			if _, ok := aggregation[testRunId]; !ok {
 				t, _ := tdigest.New(tdigest.Compression(10000))
 				aggregation[testRunId] = t
 			}
-			_ = aggregation[testRunId].Add(timeDiff)
+			_ = aggregation[testRunId].Add(float64(timeDiff.Milliseconds()))
 		}
 	}
 	for k, digest := range aggregation {
@@ -73,9 +83,26 @@ func handler() error {
 	return nil
 }
 
+func handler() error {
+	fmt.Printf("handler entry\n")
+	for _, logGroupName := range []string{streamLogGroupName, queueLogGroupName} {
+		fmt.Printf("analyzing log group %s ...\n", logGroupName)
+		err := analyze(logGroupName)
+		fmt.Printf("analyzed log group %s\n", logGroupName)
+		if err != nil {
+			fmt.Printf("error analysing %s: %+v\n", logGroupName, err)
+		}
+	}
+
+	return nil
+}
+
 func main() {
+	fmt.Printf("init start\n")
+
 	region = os.Getenv("REGION")
-	logGroupName = os.Getenv("CLOUDWATCH_LOGS_LOG_GROUP")
+	queueLogGroupName = os.Getenv("QUEUE_CLOUDWATCH_LOGS_LOG_GROUP")
+	streamLogGroupName = os.Getenv("STREAM_CLOUDWATCH_LOGS_LOG_GROUP")
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(region),
@@ -92,6 +119,8 @@ func main() {
 
 	cloudformationClient = cloudformation.NewFromConfig(cfg, func(o *cloudformation.Options) {
 	})
+
+	fmt.Printf("init finished\n")
 
 	lambda.Start(handler)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awskinesis"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdaeventsources"
@@ -50,6 +51,7 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "queue-producer", "build")), nil),
 		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),
 		Environment: &map[string]*string{
+			"REGION":             stack.Region(),
 			"QUEUE_URL":          queue.QueueUrl(),
 			"NUMBER_OF_MESSAGES": jsii.String("10000"),
 		},
@@ -61,6 +63,11 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 		StreamMode:      awskinesis.StreamMode_PROVISIONED,
 		ShardCount:      jsii.Number(10),
 		StreamName:      jsii.String("EventBenchmarkStream"),
+	})
+
+	streamConsumer := awskinesis.NewCfnStreamConsumer(stack, jsii.String("StreamConsumer"), &awskinesis.CfnStreamConsumerProps{
+		ConsumerName: jsii.String("EventBenchmarkStreamConsumer"),
+		StreamArn:    stream.StreamArn(),
 	})
 
 	streamConsumerLambda := awslambda.NewFunction(stack, jsii.String("StreamConsumerFunction"), &awslambda.FunctionProps{
@@ -84,24 +91,32 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 		Environment: &map[string]*string{
 			"REGION":             stack.Region(),
 			"STREAM_NAME":        stream.StreamName(),
-			"NUMBER_OF_MESSAGES": jsii.String("1000"),
+			"NUMBER_OF_MESSAGES": jsii.String("1"),
 		},
 	})
-	stream.GrantReadWrite(streamProducerLambda.Role())
-
-	streamConsumerLambda.AddEventSource(awslambdaeventsources.NewKinesisEventSource(stream, &awslambdaeventsources.KinesisEventSourceProps{
+	stream.GrantWrite(streamProducerLambda.Role())
+	awslambda.NewEventSourceMapping(stack, jsii.String("stream-consumer-mapping"), &awslambda.EventSourceMappingProps{
+		EventSourceArn:        streamConsumer.AttrConsumerArn(),
 		BatchSize:             jsii.Number(1),
 		StartingPosition:      awslambda.StartingPosition_TRIM_HORIZON,
 		Enabled:               jsii.Bool(true),
 		ParallelizationFactor: jsii.Number(10),
-	}))
+		Target:                streamConsumerLambda,
+	})
+
 	stream.GrantRead(streamConsumerLambda.Role())
+	resources := []*string{streamConsumer.AttrConsumerArn()}
+	actions := []*string{jsii.String("kinesis:SubscribeToShard")}
+	streamConsumerLambda.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Actions:   &actions,
+		Resources: &resources,
+	}))
 
 	analyzeTestRunLambda := awslambda.NewFunction(stack, jsii.String("AnalyzeTestRunFunction"), &awslambda.FunctionProps{
 		Runtime:         awslambda.Runtime_PROVIDED_AL2(),
 		MemorySize:      jsii.Number(128),
 		Timeout:         awscdk.Duration_Minutes(jsii.Number(1)),
-		Handler:         jsii.String("queue-consumer"),
+		Handler:         jsii.String("bootstrap"),
 		Architecture:    awslambda.Architecture_ARM_64(),
 		Code:            awslambda.Code_FromAsset(jsii.String(path.Join("..", "analyze-test-run", "build")), nil),
 		InsightsVersion: awslambda.LambdaInsightsVersion_VERSION_1_0_135_0(),

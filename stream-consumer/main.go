@@ -14,6 +14,13 @@ type Datum struct {
 	MessageNumber int    `json:"message_number"`
 }
 
+type Output struct {
+	TestRunId  string `json:"test_run_id"`
+	EventId    string `json:"event_id"`
+	Body       string `json:"body"`
+	TimeDiffNs int    `json:"time_diff_ns"`
+}
+
 func handler(event events.KinesisEvent) error {
 	for _, record := range event.Records {
 		dataSerialized := record.Kinesis.Data
@@ -21,6 +28,7 @@ func handler(event events.KinesisEvent) error {
 		err := json.Unmarshal(dataSerialized, &datum)
 		if err != nil {
 			fmt.Printf("could not deserialize! %+v\n", err)
+			continue
 		}
 		testRunId := datum.TestRunId
 		timeSent, err := time.Parse(time.RFC3339Nano, datum.TimeSent)
@@ -29,7 +37,14 @@ func handler(event events.KinesisEvent) error {
 			continue
 		}
 		timeDiff := time.Now().Sub(timeSent)
-		fmt.Printf("testRunId %s eventId %s body %s timeDiff ms %d\n", testRunId, record.EventID, string(dataSerialized), timeDiff.Milliseconds())
+		output := Output{
+			TestRunId:  testRunId,
+			EventId:    record.EventID,
+			Body:       string(record.Kinesis.Data),
+			TimeDiffNs: int(timeDiff.Nanoseconds()),
+		}
+		outputSerialized, _ := json.Marshal(output)
+		fmt.Printf("%s\n", string(outputSerialized))
 	}
 	return nil
 }
