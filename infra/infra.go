@@ -91,7 +91,7 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 		Environment: &map[string]*string{
 			"REGION":             stack.Region(),
 			"STREAM_NAME":        stream.StreamName(),
-			"NUMBER_OF_MESSAGES": jsii.String("1"),
+			"NUMBER_OF_MESSAGES": jsii.String("10000"),
 		},
 	})
 	stream.GrantWrite(streamProducerLambda.Role())
@@ -127,6 +127,9 @@ func EventBenchmarkStack(scope constructs.Construct, id string, props *EventBenc
 		},
 	})
 	queueConsumerLambda.LogGroup().Grant(analyzeTestRunLambda.Role(),
+		jsii.String("logs:FilterLogEvents"),
+	)
+	streamConsumerLambda.LogGroup().Grant(analyzeTestRunLambda.Role(),
 		jsii.String("logs:FilterLogEvents"),
 	)
 

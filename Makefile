@@ -1,8 +1,7 @@
 makeFileDir := $(abspath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
 init:
-	brew install bazelisk
-	go install github.com/bazelbuild/buildtools/buildifier@latest
+	npm i -g aws-cdk
 
 build-infra:
 	cd $(makeFileDir)/infra && go build

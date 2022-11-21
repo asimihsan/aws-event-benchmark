@@ -54,14 +54,14 @@ func analyze(logGroupName string) error {
 			return fmt.Errorf("failed to get FilterLogEvents page, %w", err)
 		}
 		for _, event := range page.Events {
-			fmt.Printf("tick\n")
+			//fmt.Printf("tick\n")
 			var output Output
 			err := json.Unmarshal([]byte(*event.Message), &output)
 			if err != nil {
 				//fmt.Printf("could not deserialize event %s: %+v", *event.Message, err)
 				continue
 			}
-			fmt.Printf("output: %+v\n", output)
+			//fmt.Printf("output: %+v\n", output)
 			testRunId := output.TestRunId
 			timeDiff := time.Nanosecond * time.Duration(output.TimeDiffNs)
 			if _, ok := aggregation[testRunId]; !ok {
